@@ -16,11 +16,10 @@ output_file = "american_roman.oxt"
 checkpoint_file = "translation_checkpoint.json"
 batch_size = 20
 
-# 3 Hamesha chalne wale free models (Agar ek down hua toh doosra chalega)
+# Jo 2 models sab se zyada stable hain OpenRouter par
 MODELS = [
-    "google/gemma-2-9b-it:free",
-    "huggingfaceh4/zephyr-7b-beta:free",
-    "microsoft/phi-3-mini-128k-instruct:free"
+    "meta-llama/llama-3.1-8b-instruct:free",
+    "qwen/qwen-2-7b-instruct:free"
 ]
 
 curr_key = 0
@@ -37,7 +36,7 @@ def translate_batch(batch_dict):
     url = "https://openrouter.ai/api/v1/chat/completions"
     prompt = f"Translate to Roman Urdu:\n{json.dumps(batch_dict, ensure_ascii=False)}"
     
-    for attempt in range(20): # Max 20 attempts taake skip na ho
+    for attempt in range(4): # 4 attempts taake time zaya na ho
         payload = {
             "model": MODELS[curr_model], 
             "messages": [
@@ -66,25 +65,20 @@ def translate_batch(batch_dict):
                     parsed = json.loads(content.strip())
                     if parsed: return parsed
                 except json.JSONDecodeError:
-                    print(f"\n⚠️ Format Error from {MODELS[curr_model]}. Retrying...", end="", flush=True)
-            elif response.status_code == 404:
-                print(f"\n⚠️ 404: Model {MODELS[curr_model]} down. Switching model...", end="", flush=True)
-                curr_model = (curr_model + 1) % len(MODELS) # Fauran doosra model lagao
-                time.sleep(1)
-                continue # Batch skip nahi karna, doosre model se try karo
-            elif response.status_code in [429, 402]:
-                print(f"\n⚠️ Limit Reached. Switching key...", end="", flush=True)
+                    print(f"\n⚠️ Format Error. Retrying...", end="", flush=True)
             else:
-                print(f"\n⚠️ HTTP Error {response.status_code}. Switching key...", end="", flush=True)
+                # ASAL ERROR YAHAN PRINT HOGA!
+                print(f"\n⚠️ OPENROUTER ERROR {response.status_code} on {MODELS[curr_model]}:\n👉 {response.text}", flush=True)
+                curr_model = (curr_model + 1) % len(MODELS)
                 
         except Exception as e:
-            print(f"\n⚠️ Connection Error. Switching key...", end="", flush=True)
+            print(f"\n⚠️ Connection Error: {e}", end="", flush=True)
             
         curr_key = (curr_key + 1) % len(API_KEYS)
         time.sleep(2)
         
-    print("\n❌ Laga taar errors aaye. Script ruk rahi hai taake lines skip na hon.")
-    exit(1) # Agar bohot dafa fail ho toh workflow rok do
+    print("\n❌ Errors ki wajah se script ruk rahi hai. Upar OpenRouter ka Error Message parhein.")
+    exit(1)
 
 if os.path.exists(input_file):
     print(f"📁 Reading file: {input_file}", flush=True)
