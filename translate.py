@@ -14,11 +14,11 @@ if not API_KEYS:
 current_key_idx = 0
 current_model_idx = 0
 
-# 4 Best Free Models (Agar ek fail hoga toh doosra chalega)
+# Behtareen Free Models ki list
 FREE_MODELS = [
+    "google/gemma-2-9b-it:free",
     "huggingfaceh4/zephyr-7b-beta:free",
     "microsoft/phi-3-mini-128k-instruct:free",
-    "google/gemma-2-9b-it:free",
     "meta-llama/llama-3-8b-instruct:free"
 ]
 
@@ -49,13 +49,13 @@ Translate the English text into natural, conversational, and very easy "WhatsApp
 
 STRICT RULES:
 1. Preserve ALL formatting tags (~z~, ~w~, ~n~, ~a~, ~g~, ~b~) EXACTLY as they appear at the start or inside the line. Do NOT alter them.
-2. Return ONLY a valid JSON object matching the exact input keys provided. No extra text or code blocks.
+2. Return ONLY a valid JSON object matching the exact input keys provided. No extra text or code blocks. Do not say "Here is the translation".
 3. Translate EVERY line into Roman Urdu. Do NOT return text in English.
 4. Keep the tone gritty, natural, and suited for an action game.
 """
 
 def translate_batch(batch_dict):
-    url = "[https://openrouter.ai/api/v1/chat/completions](https://openrouter.ai/api/v1/chat/completions)"
+    url = "https://openrouter.ai/api/v1/chat/completions"
     prompt = f"Translate these dialogue values to Roman Urdu:\n{json.dumps(batch_dict, ensure_ascii=False)}"
     
     max_attempts = len(API_KEYS) * len(FREE_MODELS)
@@ -76,24 +76,31 @@ def translate_batch(batch_dict):
         }
         
         try:
-            response = requests.post(url, headers=headers, json=payload, timeout=30)
+            response = requests.post(url, headers=headers, json=payload, timeout=45)
             
             if response.status_code == 200:
                 res_json = response.json()
                 content = res_json['choices'][0]['message']['content']
                 
+                # Agar AI ne markdown tags lagaye hain toh hatao
                 if content.startswith("```json"):
                     content = content[7:-3]
                 elif content.startswith("```"):
                     content = content[3:-3]
                     
-                parsed = json.loads(content.strip())
-                
-                first_key = list(batch_dict.keys())[0]
-                if parsed.get(first_key) and parsed[first_key] != batch_dict[first_key]:
-                    return parsed
-                else:
-                    print("\n⚠️ Untranslated text returned. Retrying...", flush=True)
+                try:
+                    parsed = json.loads(content.strip())
+                    first_key = list(batch_dict.keys())[0]
+                    if parsed.get(first_key) and parsed[first_key] != batch_dict[first_key]:
+                        return parsed
+                    else:
+                        print("\n⚠️ Format issue. Retrying...", flush=True)
+                except json.JSONDecodeError:
+                    # Agar JSON theek nahi bheja toh model switch karo
+                    print(f"\n⚠️ AI ne ghalat JSON bheja. Model switch kar rahe hain...", flush=True)
+                    switch_model()
+                    time.sleep(2)
+                    continue
                     
             elif response.status_code in [429, 402]: 
                 print(f"\n⚠️ Rate Limit (429/402). Switching key...", flush=True)
@@ -104,12 +111,16 @@ def translate_batch(batch_dict):
                 switch_model()
                 time.sleep(2)
             else:
-                print(f"\n⚠️ HTTP {response.status_code}. Switching key...", flush=True)
+                print(f"\n⚠️ HTTP {response.status_code}: {response.text[:100]}. Switching key...", flush=True)
                 switch_key()
                 time.sleep(2)
                 
+        except requests.exceptions.RequestException as e:
+            print(f"\n⚠️ Connection Error: {str(e)[:100]}. Switching key...", flush=True)
+            switch_key()
+            time.sleep(2)
         except Exception as e:
-            print(f"\n⚠️ Error. Switching key...", flush=True)
+            print(f"\n⚠️ Unexpected Error: {str(e)[:100]}. Switching key...", flush=True)
             switch_key()
             time.sleep(2)
             
