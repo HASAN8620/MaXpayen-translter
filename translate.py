@@ -21,7 +21,7 @@ def switch_key():
     global current_key_idx
     old_idx = current_key_idx
     current_key_idx = (current_key_idx + 1) % len(API_KEYS)
-    print(f"\n🔄 [KEY SWITCH] Limit Hit! Key #{old_idx + 1} se Key #{current_key_idx + 1} par switch ho rahe hain...", flush=True)
+    print(f"\n🔄 [KEY SWITCH] Key #{old_idx + 1} se Key #{current_key_idx + 1} par switch ho rahe hain...", flush=True)
 
 input_file = "american.oxt"
 output_file = "american_roman.oxt"
@@ -43,8 +43,9 @@ def translate_batch(batch_dict):
     url = "https://openrouter.ai/api/v1/chat/completions"
     prompt = f"Translate these dialogue values to Roman Urdu:\n{json.dumps(batch_dict, ensure_ascii=False)}"
     
+    # Sab se stable free model use kar rahe hain
     payload = {
-        "model": "meta-llama/llama-3.1-8b-instruct:free", # 👈 Yahan model update kar diya hai (100% working)
+        "model": "google/gemma-2-9b-it:free", 
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": prompt}
@@ -65,7 +66,7 @@ def translate_batch(batch_dict):
                 res_json = response.json()
                 content = res_json['choices'][0]['message']['content']
                 
-                # API kabhi markdown tags (```json) bhej deti hai, isko clean karne ke liye:
+                # Agar AI markdown mein JSON bhej de toh usay saf karna
                 if content.startswith("```json"):
                     content = content[7:-3]
                 elif content.startswith("```"):
@@ -73,7 +74,6 @@ def translate_batch(batch_dict):
                     
                 parsed = json.loads(content.strip())
                 
-                # Verify successful translation
                 first_key = list(batch_dict.keys())[0]
                 if parsed.get(first_key) and parsed[first_key] != batch_dict[first_key]:
                     return parsed
@@ -83,16 +83,17 @@ def translate_batch(batch_dict):
                 switch_key()
                 time.sleep(2)
             elif response.status_code == 404:
-                print(f" ⚠️ HTTP 404: Model issue on OpenRouter. Check model name.", end="", flush=True)
+                # Agar 404 aaye toh exact error print karega
+                print(f" ⚠️ HTTP 404 Error Detail: {response.text}", end="", flush=True)
                 switch_key()
                 time.sleep(2)
             else:
-                print(f" ⚠️ HTTP {response.status_code}. Switching key...", end="", flush=True)
+                print(f" ⚠️ HTTP {response.status_code}: {response.text}. Switching key...", end="", flush=True)
                 switch_key()
                 time.sleep(2)
                 
         except Exception as e:
-            print(" ⚠️ Connection error. Switching key...", end="", flush=True)
+            print(f" ⚠️ Connection error: {str(e)}. Switching key...", end="", flush=True)
             switch_key()
             time.sleep(2)
             
