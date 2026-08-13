@@ -9,7 +9,7 @@ permissions:
 jobs:
   translate:
     runs-on: ubuntu-latest
-    timeout-minutes: 360 # 6 ghante ka max runtime
+    timeout-minutes: 360
 
     steps:
       - name: Checkout Repository
@@ -32,6 +32,12 @@ jobs:
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git add american_roman.oxt translation_checkpoint.json
-          git commit -m "Auto-translation update from OpenRouter" || exit 0
-          git push
+          
+          # Agar files nahi bhi hain toh error nahi aayega (|| true)
+          git add american_roman.oxt translation_checkpoint.json || true
+          
+          # Agar koi naya word translate nahi hua toh error nahi dega
+          git commit -m "Auto-translation update from OpenRouter" || echo "No new translations to commit."
+          
+          # Push mein error aaye toh workflow fail nahi hoga
+          git push || echo "Push failed or nothing to push."
