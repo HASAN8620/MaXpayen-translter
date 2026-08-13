@@ -28,7 +28,7 @@ checkpoint_file = "translation_checkpoint.json"
 batch_size = 20
 
 # Sab se FAST aur reliable free model (Llama 3.1)
-MODEL_NAME = "meta-llama/llama-3.1-8b-instruct:free"
+MODEL_NAME = "microsoft/phi-3-mini-128k-instruct:free"
 
 SYSTEM_PROMPT = """
 You are an expert game dialogue translator.
