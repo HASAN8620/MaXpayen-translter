@@ -55,7 +55,7 @@ STRICT RULES:
 """
 
 def translate_batch(batch_dict):
-    url = "https://openrouter.ai/api/v1/chat/completions"
+    url = "[https://openrouter.ai/api/v1/chat/completions](https://openrouter.ai/api/v1/chat/completions)"
     prompt = f"Translate these dialogue values to Roman Urdu:\n{json.dumps(batch_dict, ensure_ascii=False)}"
     
     max_attempts = len(API_KEYS) * len(FREE_MODELS)
@@ -84,4 +84,102 @@ def translate_batch(batch_dict):
                 
                 if content.startswith("```json"):
                     content = content[7:-3]
-                elif content.startswith("
+                elif content.startswith("```"):
+                    content = content[3:-3]
+                    
+                parsed = json.loads(content.strip())
+                
+                first_key = list(batch_dict.keys())[0]
+                if parsed.get(first_key) and parsed[first_key] != batch_dict[first_key]:
+                    return parsed
+                else:
+                    print("\n⚠️ Untranslated text returned. Retrying...", flush=True)
+                    
+            elif response.status_code in [429, 402]: 
+                print(f"\n⚠️ Rate Limit (429/402). Switching key...", flush=True)
+                switch_key()
+                time.sleep(2)
+            elif response.status_code == 404:
+                print(f"\n⚠️ HTTP 404: Model not found. Switching model...", flush=True)
+                switch_model()
+                time.sleep(2)
+            else:
+                print(f"\n⚠️ HTTP {response.status_code}. Switching key...", flush=True)
+                switch_key()
+                time.sleep(2)
+                
+        except Exception as e:
+            print(f"\n⚠️ Error. Switching key...", flush=True)
+            switch_key()
+            time.sleep(2)
+            
+    return None
+
+if os.path.exists(input_file):
+    print(f"📁 Reading file: {input_file}", flush=True)
+    saved_data = {}
+    
+    if os.path.exists(checkpoint_file):
+        with open(checkpoint_file, "r", encoding="utf-8") as f:
+            saved_data = json.load(f)
+        print(f"🔄 Checkpoint Loaded: {len(saved_data)} lines pehle se complete hain.", flush=True)
+
+    with open(input_file, "r", encoding="utf-8", errors="ignore") as f:
+        all_lines = f.readlines()
+
+    pending_batch = {}
+    total_dialogues = 0
+
+    for idx, line in enumerate(all_lines):
+        if re.search(r'=\s*~(z|w)~', line):
+            total_dialogues += 1
+            key = line.split('=', 1)[0].strip()
+            
+            if key in saved_data:
+                continue
+
+            text = line.split('=', 1)[1].strip()
+            pending_batch[key] = text
+
+            if len(pending_batch) >= batch_size:
+                print(f"\n🚀 Translating batch... ({len(saved_data)}/{total_dialogues} lines done)", flush=True)
+                res = translate_batch(pending_batch)
+                
+                if res:
+                    for k, v in res.items():
+                        saved_data[k] = v
+                    
+                    with open(checkpoint_file, "w", encoding="utf-8") as cf:
+                        json.dump(saved_data, cf, ensure_ascii=False, indent=2)
+                    print("✅ [Batch Saved]", flush=True)
+                else:
+                    print("❌ [Batch Failed - Skipped]", flush=True)
+                
+                pending_batch = {}
+                time.sleep(1.0)
+
+    if pending_batch:
+        res = translate_batch(pending_batch)
+        if res:
+            for k, v in res.items():
+                saved_data[k] = v
+            with open(checkpoint_file, "w", encoding="utf-8") as cf:
+                json.dump(saved_data, cf, ensure_ascii=False, indent=2)
+
+    print("\n🔨 Rebuilding american_roman.oxt file...", flush=True)
+    translated_count = 0
+    with open(output_file, "w", encoding="utf-8") as out:
+        for line in all_lines:
+            if re.search(r'=\s*~(z|w)~', line):
+                key = line.split('=', 1)[0].strip()
+                if key in saved_data:
+                    out.write(f"{key} = {saved_data[key]}\n")
+                    translated_count += 1
+                else:
+                    out.write(line)
+            else:
+                out.write(line)
+
+    print(f"\n🎉 SUCCESS! File rebuild complete. Total {translated_count} lines translated successfully.", flush=True)
+else:
+    print(f"❌ Error: '{input_file}' file repository mein nahi mili.", flush=True)
