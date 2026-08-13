@@ -13,36 +13,22 @@ if not API_KEYS:
     exit(1)
 
 current_key_idx = 0
-current_model_idx = 0
-
-# Wahi exact model jo aapke screenshot mein live hai!
-FREE_MODELS = [
-    "nvidia/nemotron-3-ultra-550b-a55b:free",
-    "meta-llama/llama-3.1-8b-instruct:free"
-]
 
 def get_current_key():
     return API_KEYS[current_key_idx]
 
-def get_current_model():
-    return FREE_MODELS[current_model_idx]
-
 def switch_key():
     global current_key_idx
-    old_idx = current_key_idx
     current_key_idx = (current_key_idx + 1) % len(API_KEYS)
-    print(f"\n🔄 [KEY SWITCH] Key #{old_idx + 1} se Key #{current_key_idx + 1} par switch ho rahe hain...", flush=True)
-
-def switch_model():
-    global current_model_idx
-    old_idx = current_model_idx
-    current_model_idx = (current_model_idx + 1) % len(FREE_MODELS)
-    print(f"\n🔄 [MODEL SWITCH] Model '{FREE_MODELS[old_idx]}' available nahi hai. Switching to '{FREE_MODELS[current_model_idx]}'...", flush=True)
+    print(f"\n🔄 [KEY SWITCH] Key #{current_key_idx + 1} par switch ho gaye hain...", flush=True)
 
 input_file = "american.oxt"
 output_file = "american_roman.oxt"
 checkpoint_file = "translation_checkpoint.json"
 batch_size = 20
+
+# Sab se FAST aur reliable free model (Llama 3.1)
+MODEL_NAME = "meta-llama/llama-3.1-8b-instruct:free"
 
 SYSTEM_PROMPT = """
 You are an expert game dialogue translator.
@@ -59,31 +45,28 @@ def translate_batch(batch_dict):
     url = "https://openrouter.ai/api/v1/chat/completions"
     prompt = f"Translate these dialogue values to Roman Urdu:\n{json.dumps(batch_dict, ensure_ascii=False)}"
     
-    max_attempts = len(API_KEYS) * len(FREE_MODELS)
-    
-    for attempt in range(max_attempts):
-        payload = {
-            "model": get_current_model(), 
-            "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": prompt}
-            ],
-            "temperature": 0.2
-        }
+    payload = {
+        "model": MODEL_NAME, 
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.2
+    }
 
+    for attempt in range(len(API_KEYS) * 2):
         headers = {
             "Authorization": f"Bearer {get_current_key()}",
             "Content-Type": "application/json"
         }
         
         try:
-            response = requests.post(url, headers=headers, json=payload, timeout=45)
+            response = requests.post(url, headers=headers, json=payload, timeout=30)
             
             if response.status_code == 200:
                 res_json = response.json()
                 content = res_json['choices'][0]['message']['content']
                 
-                # Clean Markdown JSON tags if AI sends them
                 if content.startswith("```json"):
                     content = content[7:-3]
                 elif content.startswith("```"):
@@ -95,22 +78,19 @@ def translate_batch(batch_dict):
                 if parsed.get(first_key) and parsed[first_key] != batch_dict[first_key]:
                     return parsed
                 else:
-                    print(" ⚠️ Untranslated text returned. Retrying...", end="", flush=True)
+                    print("\n⚠️ Untranslated text returned. Retrying...", flush=True)
                     
             elif response.status_code in [429, 402]: 
+                print(f"\n⚠️ Rate Limit. Switching key...", flush=True)
                 switch_key()
                 time.sleep(2)
-            elif response.status_code == 404:
-                print(f" ⚠️ HTTP 404: Model issue.", end="", flush=True)
-                switch_model()
-                time.sleep(2)
             else:
-                print(f" ⚠️ HTTP {response.status_code}. Switching key...", end="", flush=True)
+                print(f"\n⚠️ HTTP {response.status_code}. Switching key...", flush=True)
                 switch_key()
                 time.sleep(2)
                 
         except Exception as e:
-            print(f" ⚠️ Connection error. Switching key...", end="", flush=True)
+            print(f"\n⚠️ Error. Switching key...", flush=True)
             switch_key()
             time.sleep(2)
             
@@ -143,7 +123,7 @@ if os.path.exists(input_file):
             pending_batch[key] = text
 
             if len(pending_batch) >= batch_size:
-                print(f"Translating... ({len(saved_data)}/{total_dialogues} lines done)", end="", flush=True)
+                print(f"\n🚀 Translating batch... ({len(saved_data)}/{total_dialogues} lines done)", flush=True)
                 res = translate_batch(pending_batch)
                 
                 if res:
@@ -152,14 +132,13 @@ if os.path.exists(input_file):
                     
                     with open(checkpoint_file, "w", encoding="utf-8") as cf:
                         json.dump(saved_data, cf, ensure_ascii=False, indent=2)
-                    print(" [Saved]", flush=True)
+                    print("✅ [Batch Saved]", flush=True)
                 else:
-                    print(" [Batch Failed - Skipped]", flush=True)
+                    print("❌ [Batch Failed - Skipped]", flush=True)
                 
                 pending_batch = {}
                 time.sleep(1.0)
 
-    # Remaining Batch
     if pending_batch:
         res = translate_batch(pending_batch)
         if res:
@@ -168,7 +147,6 @@ if os.path.exists(input_file):
             with open(checkpoint_file, "w", encoding="utf-8") as cf:
                 json.dump(saved_data, cf, ensure_ascii=False, indent=2)
 
-    # Final File Rebuild
     print("\n🔨 Rebuilding american_roman.oxt file...", flush=True)
     translated_count = 0
     with open(output_file, "w", encoding="utf-8") as out:
