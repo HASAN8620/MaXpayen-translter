@@ -25,14 +25,12 @@ try:
         all_models = resp.json().get("data", [])
         for m in all_models:
             pricing = m.get("pricing", {})
-            # Jinki qeemat strictly 0 hai, unko list mein daalo
             if pricing.get("prompt") in ["0", 0, "0.0"] and pricing.get("completion") in ["0", 0, "0.0"]:
-                if m["id"].endswith(":free"): # Sirf free slugs
+                if m["id"].endswith(":free"): 
                     MODELS.append(m["id"])
 except Exception as e:
     print(f"⚠️ Live models fetch karne mein masla: {e}", flush=True)
 
-# Agar auto-fetch fail ho jaye toh yeh emergency backup models hain
 if not MODELS:
     MODELS = [
         "google/gemma-2-9b-it:free",
@@ -56,11 +54,12 @@ def translate_batch(batch_dict):
     url = "https://openrouter.ai/api/v1/chat/completions"
     prompt = f"Translate to Roman Urdu:\n{json.dumps(batch_dict, ensure_ascii=False)}"
     
-    for attempt in range(15): # Max 15 attempts taake script jaldi haar na mane
+    for attempt in range(15): 
         if curr_model >= len(MODELS):
             curr_model = 0 
             
         model_to_use = MODELS[curr_model]
+        
         payload = {
             "model": model_to_use, 
             "messages": [
@@ -72,3 +71,17 @@ def translate_batch(batch_dict):
         
         headers = {
             "Authorization": f"Bearer {API_KEYS[curr_key]}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://github.com/HASAN8620/MaxPayen-translter", 
+            "X-Title": "RomanUrduTranslator"
+        }
+        
+        try:
+            response = requests.post(url, headers=headers, json=payload, timeout=40)
+            
+            if response.status_code == 200:
+                content = response.json()['choices'][0]['message']['content']
+                
+                if content.startswith('```json'): 
+                    content = content[7:-3]
+                elif content.startswith('
