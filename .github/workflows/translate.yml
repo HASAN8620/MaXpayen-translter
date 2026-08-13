@@ -21,11 +21,11 @@ jobs:
           python-version: '3.10'
 
       - name: Install Dependencies
-        run: pip install requests
+        # googletrans ka updated version lagaya hai jo bina API chalta hai
+        run: |
+          pip install googletrans==4.0.0-rc1
 
       - name: Run Translation Script
-        env:
-          OPENROUTER_API_KEYS: ${{ secrets.OPENROUTER_API_KEYS }}
         run: python translate.py
 
       - name: Commit and Push Translated Files
@@ -33,5 +33,5 @@ jobs:
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           git add american_roman.oxt translation_checkpoint.json || true
-          git commit -m "Auto-translation update from OpenRouter" || echo "No changes to commit"
+          git commit -m "Auto-translation via Google Translate (No API)" || echo "No changes to commit"
           git push || echo "Push skipped or failed"
