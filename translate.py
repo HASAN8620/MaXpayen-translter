@@ -4,13 +4,12 @@ import json
 import time
 import requests
 
-# Sirf GitHub Secrets se keys uthana
+# GitHub Secrets se keys uthana
 KEYS_ENV = os.environ.get("OPENROUTER_API_KEYS", "")
 API_KEYS = [k.strip() for k in KEYS_ENV.split(",") if k.strip()]
 
-# Agar GitHub Secret set nahi hai toh script error de kar ruk jayegi
 if not API_KEYS:
-    print("❌ Error: OPENROUTER_API_KEYS Secret nahi mila. Kripya GitHub Actions Secrets check karein.")
+    print("❌ Error: OPENROUTER_API_KEYS Secret nahi mila.")
     exit(1)
 
 current_key_idx = 0
@@ -29,7 +28,6 @@ output_file = "american_roman.oxt"
 checkpoint_file = "translation_checkpoint.json"
 batch_size = 20
 
-# WhatsApp-Style Roman Urdu Prompt
 SYSTEM_PROMPT = """
 You are an expert game dialogue translator.
 Translate the English text into natural, conversational, and very easy "WhatsApp-style Roman Urdu" (Latin script) that a common gamer can easily read (e.g., 'Main yahan fasa hua hoon').
@@ -46,12 +44,11 @@ def translate_batch(batch_dict):
     prompt = f"Translate these dialogue values to Roman Urdu:\n{json.dumps(batch_dict, ensure_ascii=False)}"
     
     payload = {
-        "model": "qwen/qwen-2.5-72b-instruct:free",
+        "model": "meta-llama/llama-3.1-8b-instruct:free", # 👈 Yahan model update kar diya hai (100% working)
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": prompt}
         ],
-        "response_format": {"type": "json_object"},
         "temperature": 0.2
     }
 
@@ -67,7 +64,14 @@ def translate_batch(batch_dict):
             if response.status_code == 200:
                 res_json = response.json()
                 content = res_json['choices'][0]['message']['content']
-                parsed = json.loads(content)
+                
+                # API kabhi markdown tags (```json) bhej deti hai, isko clean karne ke liye:
+                if content.startswith("```json"):
+                    content = content[7:-3]
+                elif content.startswith("```"):
+                    content = content[3:-3]
+                    
+                parsed = json.loads(content.strip())
                 
                 # Verify successful translation
                 first_key = list(batch_dict.keys())[0]
@@ -76,6 +80,10 @@ def translate_batch(batch_dict):
                 else:
                     print(" ⚠️ Untranslated text returned. Retrying...", end="", flush=True)
             elif response.status_code in [429, 402]: 
+                switch_key()
+                time.sleep(2)
+            elif response.status_code == 404:
+                print(f" ⚠️ HTTP 404: Model issue on OpenRouter. Check model name.", end="", flush=True)
                 switch_key()
                 time.sleep(2)
             else:
