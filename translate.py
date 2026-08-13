@@ -72,15 +72,3 @@ def translate_batch(batch_dict):
         
         headers = {
             "Authorization": f"Bearer {API_KEYS[curr_key]}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://github.com/HASAN8620/MaxPayen-translter", 
-            "X-Title": "RomanUrduTranslator"
-        }
-        
-        try:
-            response = requests.post(url, headers=headers, json=payload, timeout=40)
-            
-            if response.status_code == 200:
-                content = response.json()['choices'][0]['message']['content']
-                if content.startswith("```json"): content = content[7:-3]
-                elif content.startswith("
