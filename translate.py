@@ -16,11 +16,31 @@ output_file = "american_roman.oxt"
 checkpoint_file = "translation_checkpoint.json"
 batch_size = 20
 
-# Jo 2 models sab se zyada stable hain OpenRouter par
-MODELS = [
-    "meta-llama/llama-3.1-8b-instruct:free",
-    "qwen/qwen-2-7b-instruct:free"
-]
+# 👉 ULTIMATE FIX: OpenRouter se aaj ke LIVE free models khud dhoondhna!
+print("🔍 OpenRouter se aaj ke live FREE models dhoondh rahe hain...", flush=True)
+MODELS = []
+try:
+    resp = requests.get("https://openrouter.ai/api/v1/models", timeout=15)
+    if resp.status_code == 200:
+        all_models = resp.json().get("data", [])
+        for m in all_models:
+            pricing = m.get("pricing", {})
+            # Jinki qeemat strictly 0 hai, unko list mein daalo
+            if pricing.get("prompt") in ["0", 0, "0.0"] and pricing.get("completion") in ["0", 0, "0.0"]:
+                if m["id"].endswith(":free"): # Sirf free slugs
+                    MODELS.append(m["id"])
+except Exception as e:
+    print(f"⚠️ Live models fetch karne mein masla: {e}", flush=True)
+
+# Agar auto-fetch fail ho jaye toh yeh emergency backup models hain
+if not MODELS:
+    MODELS = [
+        "google/gemma-2-9b-it:free",
+        "huggingfaceh4/zephyr-7b-beta:free",
+        "mistralai/mistral-7b-instruct:free"
+    ]
+
+print(f"✅ Yeh Free Models mile hain! Pehla try kar rahe hain: {MODELS[:3]}...", flush=True)
 
 curr_key = 0
 curr_model = 0
@@ -36,9 +56,13 @@ def translate_batch(batch_dict):
     url = "https://openrouter.ai/api/v1/chat/completions"
     prompt = f"Translate to Roman Urdu:\n{json.dumps(batch_dict, ensure_ascii=False)}"
     
-    for attempt in range(4): # 4 attempts taake time zaya na ho
+    for attempt in range(15): # Max 15 attempts taake script jaldi haar na mane
+        if curr_model >= len(MODELS):
+            curr_model = 0 
+            
+        model_to_use = MODELS[curr_model]
         payload = {
-            "model": MODELS[curr_model], 
+            "model": model_to_use, 
             "messages": [
                 {"role": "system", "content": SYSTEM_PROMPT}, 
                 {"role": "user", "content": prompt}
@@ -54,80 +78,9 @@ def translate_batch(batch_dict):
         }
         
         try:
-            response = requests.post(url, headers=headers, json=payload, timeout=30)
+            response = requests.post(url, headers=headers, json=payload, timeout=40)
             
             if response.status_code == 200:
                 content = response.json()['choices'][0]['message']['content']
                 if content.startswith("```json"): content = content[7:-3]
-                elif content.startswith("```"): content = content[3:-3]
-                
-                try:
-                    parsed = json.loads(content.strip())
-                    if parsed: return parsed
-                except json.JSONDecodeError:
-                    print(f"\n⚠️ Format Error. Retrying...", end="", flush=True)
-            else:
-                # ASAL ERROR YAHAN PRINT HOGA!
-                print(f"\n⚠️ OPENROUTER ERROR {response.status_code} on {MODELS[curr_model]}:\n👉 {response.text}", flush=True)
-                curr_model = (curr_model + 1) % len(MODELS)
-                
-        except Exception as e:
-            print(f"\n⚠️ Connection Error: {e}", end="", flush=True)
-            
-        curr_key = (curr_key + 1) % len(API_KEYS)
-        time.sleep(2)
-        
-    print("\n❌ Errors ki wajah se script ruk rahi hai. Upar OpenRouter ka Error Message parhein.")
-    exit(1)
-
-if os.path.exists(input_file):
-    print(f"📁 Reading file: {input_file}", flush=True)
-    saved_data = {}
-    if os.path.exists(checkpoint_file):
-        with open(checkpoint_file, "r", encoding="utf-8") as f: saved_data = json.load(f)
-        print(f"🔄 Checkpoint Loaded: {len(saved_data)} lines done.", flush=True)
-
-    with open(input_file, "r", encoding="utf-8", errors="ignore") as f: all_lines = f.readlines()
-    pending_batch = {}
-    total = 0
-
-    for line in all_lines:
-        if re.search(r'=\s*~(z|w)~', line):
-            total += 1
-            k = line.split('=', 1)[0].strip()
-            if k not in saved_data:
-                pending_batch[k] = line.split('=', 1)[1].strip()
-                
-            if len(pending_batch) >= batch_size:
-                print(f"\n🚀 Translating batch... ({len(saved_data)}/{total})", flush=True)
-                res = translate_batch(pending_batch)
-                if res:
-                    saved_data.update(res)
-                    with open(checkpoint_file, "w", encoding="utf-8") as cf: 
-                        json.dump(saved_data, cf, ensure_ascii=False, indent=2)
-                    print("✅ [Batch Saved]", flush=True)
-                pending_batch = {}
-                time.sleep(1)
-
-    if pending_batch:
-        res = translate_batch(pending_batch)
-        if res:
-            saved_data.update(res)
-            with open(checkpoint_file, "w", encoding="utf-8") as cf: 
-                json.dump(saved_data, cf, ensure_ascii=False, indent=2)
-
-    print("\n🔨 Rebuilding american_roman.oxt file...", flush=True)
-    count = 0
-    with open(output_file, "w", encoding="utf-8") as out:
-        for line in all_lines:
-            if re.search(r'=\s*~(z|w)~', line):
-                k = line.split('=', 1)[0].strip()
-                if k in saved_data:
-                    out.write(f"{k} = {saved_data[k]}\n")
-                    count += 1
-                else: out.write(line)
-            else: out.write(line)
-            
-    print(f"\n🎉 SUCCESS! {count} lines translated.", flush=True)
-else:
-    print(f"❌ Error: '{input_file}' file nahi mili.", flush=True)
+                elif content.startswith("
